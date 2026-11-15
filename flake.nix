@@ -14,7 +14,7 @@
       packages = forAllSystems (pkgs: rec {
         marketplace = pkgs.buildGoModule {
           pname = "marketplace";
-          version = "0.1.0";
+          version = "0.1.0"; # x-release-please-version
           src = self;
           vendorHash = "sha256-n+WU7qcF6NauBw9DFU4VG1fnDQ387+nibJ/uzApqehk=";
           ldflags = [ "-s" "-w" ];
