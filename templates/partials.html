@@ -1,0 +1,23 @@
+{{define "card"}}
+<a class="card{{if ne .Status "open"}} faded{{end}}" href="/items/{{.ID}}">
+  <div class="thumb">{{with .Cover}}<img src="/photos/{{.}}" alt="" loading="lazy">{{else}}<span>📦</span>{{end}}</div>
+  <div class="card-body">
+    <h3>{{.Title}}</h3>
+    <div class="tags">{{template "modeTag" .}}{{template "handoffTag" .}}{{if .CommentCount}}<span class="tag">💬 {{.CommentCount}}</span>{{end}}</div>
+  </div>
+</a>
+{{end}}
+
+{{define "modeTag"}}
+{{- if eq .Status "claimed"}}<span class="tag claimed">Claimed{{if .WinnerName}} · {{.WinnerDisplay}}{{end}}</span>
+{{- else if eq .Status "hidden"}}<span class="tag">Hidden</span>
+{{- else if eq .Mode "lottery"}}<span class="tag lottery">🎲 Lottery · <time datetime="{{iso .LotteryEndsAt}}" data-countdown>{{until .LotteryEndsAt}}</time>{{if .Mine}} · entered{{end}}</span>
+{{- else if eq .Mode "pick"}}<span class="tag pick">✋ Request{{if .Mine}}ed{{end}}</span>
+{{- else}}<span class="tag fcfs">⚡ First come</span>{{end}}
+{{end}}
+
+{{define "handoffTag"}}
+{{- if .AvailableLater}}<span class="tag later">📅 Ready {{.AvailableShort}}</span>{{end}}
+{{- if eq .Handoff "pickup"}}<span class="tag pickup">🚚 Must pick up</span>
+{{- else if eq .Handoff "dropoff"}}<span class="tag dropoff">📬 I can drop off</span>{{end}}
+{{end}}

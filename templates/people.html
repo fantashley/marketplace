@@ -1,0 +1,23 @@
+{{define "content"}}
+<h1>People</h1>
+<section class="box">
+<h2>Invite list</h2>
+{{if .Data.OpenSignup}}
+<p class="small"><strong>Open sign-up is on</strong> (<code>OPEN_SIGNUP</code>), so anyone with an email address can sign in and this list isn't used.</p>
+{{else}}
+<p class="small">Only these emails can sign in, one per line or comma-separated. Admins can always sign in.
+Removing someone also signs them out. After adding friends, send them the link; they sign in with the email you listed.</p>
+{{end}}
+<form method="post" action="/admin/people" class="stack">
+  <textarea name="allowed" rows="8" placeholder="friend@example.com">{{.Data.Allowed}}</textarea>
+  <button class="primary">Save invite list</button>
+</form>
+</section>
+<section class="box">
+<h2>Signed up ({{len .Data.People}})</h2>
+<ul class="requests">
+{{range .Data.People}}<li><div><strong>{{.Name}}</strong> <span class="muted small">{{.Email}}</span></div>
+  <span class="small">{{.Won}} item{{if ne .Won 1}}s{{end}}{{if not .NotifyNew}} · 🔕{{end}}</span></li>{{end}}
+</ul>
+</section>
+{{end}}

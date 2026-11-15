@@ -1,0 +1,19 @@
+{{define "content"}}
+<h1>Handoffs</h1>
+{{if not .Data.Groups}}<p class="muted">Nothing claimed yet.</p>{{end}}
+{{range .Data.Groups}}
+<section class="box person{{if eq .Remaining 0}} faded{{end}}">
+  <h2>{{.Name}} <span class="muted small">{{.Remaining}} left · <a href="mailto:{{.Email}}">{{.Email}}</a></span></h2>
+  <ul class="checklist">
+    {{range .Items}}
+    <li>
+      <form method="post" action="/admin/items/{{.ID}}/pickedup"><input type="hidden" name="back" value="/admin/handoffs">
+        <button class="check{{if .PickedUp}} done{{end}}" aria-label="Toggle handed off">{{if .PickedUp}}✓{{end}}</button></form>
+      <a href="/items/{{.ID}}" class="{{if .PickedUp}}struck{{end}}">{{.Title}}</a>
+      {{template "handoffTag" .}}
+    </li>
+    {{end}}
+  </ul>
+</section>
+{{end}}
+{{end}}

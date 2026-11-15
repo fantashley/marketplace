@@ -1,0 +1,19 @@
+{{define "content"}}
+{{with .Data}}
+{{if .Open}}
+<div class="grid">{{range .Open}}{{template "card" .}}{{end}}</div>
+{{else}}
+<p class="empty">Nothing up for grabs right now. You'll get an email when new things are posted.</p>
+{{end}}
+{{if .Hidden}}
+<h2>Hidden (only you see these)</h2>
+<div class="grid">{{range .Hidden}}{{template "card" .}}{{end}}</div>
+{{end}}
+{{if .Claimed}}
+<details class="claimed-section">
+  <summary><h2>Already claimed ({{len .Claimed}})</h2></summary>
+  <div class="grid">{{range .Claimed}}{{template "card" .}}{{end}}</div>
+</details>
+{{end}}
+{{end}}
+{{end}}
