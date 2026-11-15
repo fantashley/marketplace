@@ -1,0 +1,32 @@
+// Renovate runs self-hosted on ashley-nuc (fantashley/dotfiles,
+// nixos/ashley-nuc/ci/renovate.nix).
+//
+// flake.lock (nixpkgs, and with it the Go toolchain) and GitHub Actions.
+// go.mod is left off on purpose: flake.nix pins vendorHash, which changes
+// with every go.sum bump, so a gomod PR would break `nix build` until the
+// hash was fixed by hand. To enable it, give this repo a vendorHash
+// post-upgrade task in the nuc's global config, as lets-hang has, and add
+// 'gomod' to enabledManagers.
+{
+  $schema: 'https://docs.renovatebot.com/renovate-schema.json',
+  extends: ['config:recommended'],
+  timezone: 'America/Chicago',
+  schedule: ['before 9am on monday'],
+  enabledManagers: ['nix', 'github-actions'],
+  // Renovate's nix manager is opt-in (beta). flake.lock is refreshed as a
+  // whole with `nix flake update`; per-input PRs are disabled below.
+  nix: { enabled: true },
+  lockFileMaintenance: { enabled: true },
+  packageRules: [
+    {
+      description: 'Per-input flake bumps: lockFileMaintenance covers every input in one PR.',
+      matchManagers: ['nix'],
+      matchUpdateTypes: ['major', 'minor', 'patch', 'digest', 'pin', 'pinDigest'],
+      enabled: false,
+    },
+    {
+      matchManagers: ['github-actions'],
+      groupName: 'GitHub Actions',
+    },
+  ],
+}

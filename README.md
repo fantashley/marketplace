@@ -66,7 +66,13 @@ printed to the log.
 go test -race ./...
 ```
 
-`nix build` also runs them.
+`nix build` also runs them, and CI (`.github/workflows/ci.yml`) runs both on every PR.
+
+## Dependency updates
+
+Renovate (`renovate.json5`) maintains `flake.lock` and the GitHub Actions versions.
+It doesn't bump Go modules; see that file for why. After changing `go.mod` by
+hand, update `vendorHash` in `flake.nix`.
 
 ## NixOS
 

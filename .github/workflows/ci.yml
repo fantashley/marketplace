@@ -1,0 +1,41 @@
+name: CI
+
+on:
+  pull_request:
+  push:
+    branches:
+      - main
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+concurrency:
+  group: ci-${{ github.ref }}
+  cancel-in-progress: true
+
+jobs:
+  # GitHub-hosted on purpose: this repo is public, so a self-hosted runner
+  # would run code from fork PRs on that machine.
+  build:
+    name: Test and build
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v7
+
+      - name: Install Nix
+        uses: cachix/install-nix-action@v31
+
+      - name: Vet and race tests
+        run: nix develop --command sh -c 'go vet ./... && go test -race ./...'
+
+      # Builds the package exactly as the NixOS module deploys it. The build
+      # runs the tests again inside the sandbox, and it fails if go.sum
+      # changed without vendorHash.
+      - name: Nix build
+        run: nix build --print-build-logs
+
+      - name: Flake check
+        run: nix flake check
