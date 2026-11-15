@@ -1,0 +1,14 @@
+{{define "content"}}
+<div class="narrow-page">
+{{if not .User.Name}}<h1>Welcome! 👋</h1><p>What should we call you? This is shown next to things you claim.</p>
+{{else}}<h1>Profile</h1>{{end}}
+<form method="post" action="/profile" class="stack">
+  <input type="hidden" name="next" value="{{.Data.Next}}">
+  <label>Your name <input name="name" required maxlength="60" value="{{.User.Name}}" autocomplete="name" {{if not .User.Name}}autofocus{{end}}></label>
+  <label class="radio"><input type="checkbox" name="notify_new" value="1" {{if or .User.NotifyNew (not .User.Name)}}checked{{end}}>
+    <span>Email me when new items are posted</span></label>
+  <p class="muted small">Signed in as {{.User.Email}}. You'll always get an email when something becomes yours.</p>
+  <button class="primary big">Save</button>
+</form>
+</div>
+{{end}}

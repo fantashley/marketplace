@@ -1,0 +1,14 @@
+{{define "content"}}
+<div class="narrow-page">
+{{if .Data.Done}}
+<h1>Unsubscribed</h1>
+<p>You won't get new-item emails anymore. You can turn them back on from your profile.</p>
+{{else}}
+<h1>Stop new-item emails?</h1>
+<form method="post" action="/unsubscribe" class="stack">
+  <input type="hidden" name="t" value="{{.Data.Token}}">
+  <button class="primary big">Unsubscribe</button>
+</form>
+{{end}}
+</div>
+{{end}}

@@ -1,0 +1,10 @@
+{{define "content"}}
+<div class="narrow-page">
+<h1>Sign in to {{.Site}}</h1>
+<form method="post" action="/auth" class="stack">
+  <input type="hidden" name="token" value="{{.Data.Token}}">
+  <input type="hidden" name="next" value="{{.Data.Next}}">
+  <button class="primary big" autofocus>Continue</button>
+</form>
+</div>
+{{end}}

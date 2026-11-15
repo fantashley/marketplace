@@ -1,0 +1,11 @@
+{{define "content"}}
+{{with .Data}}
+<h1>My stuff</h1>
+<h2>Yours ({{len .Won}})</h2>
+{{if .Won}}<div class="grid">{{range .Won}}{{template "card" .}}{{end}}</div>
+{{else}}<p class="muted">Nothing yet.</p>{{end}}
+<h2>Waiting on ({{len .Pending}})</h2>
+{{if .Pending}}<div class="grid">{{range .Pending}}{{template "card" .}}{{end}}</div>
+{{else}}<p class="muted">No open lottery entries or requests.</p>{{end}}
+{{end}}
+{{end}}

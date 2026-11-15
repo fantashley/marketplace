@@ -1,0 +1,18 @@
+{{define "content"}}
+<h1>People</h1>
+<section class="box">
+<h2>Invite list</h2>
+<p class="small">Only these emails can sign in (one per line). <strong>Leave empty to let anyone with the link sign in.</strong> Admins can always sign in.</p>
+<form method="post" action="/admin/people" class="stack">
+  <textarea name="allowed" rows="8" placeholder="friend@example.com">{{.Data.Allowed}}</textarea>
+  <button class="primary">Save invite list</button>
+</form>
+</section>
+<section class="box">
+<h2>Signed up ({{len .Data.People}})</h2>
+<ul class="requests">
+{{range .Data.People}}<li><div><strong>{{.Name}}</strong> <span class="muted small">{{.Email}}</span></div>
+  <span class="small">{{.Won}} item{{if ne .Won 1}}s{{end}}{{if not .NotifyNew}} · 🔕{{end}}</span></li>{{end}}
+</ul>
+</section>
+{{end}}

@@ -1,0 +1,94 @@
+{{define "content"}}
+{{$admin := .IsAdmin}}
+{{with .Data}}{{$winner := .IsWinner}}{{with .Item}}
+<article class="item">
+  {{if .Photos}}
+  <div class="gallery" data-gallery>
+    {{range .Photos}}<a href="/photos/{{.Filename}}" target="_blank"><img src="/photos/{{.Filename}}" alt=""></a>{{end}}
+  </div>
+  {{if gt (len .Photos) 1}}<p class="muted center small">Swipe for {{len .Photos}} photos</p>{{end}}
+  {{end}}
+
+  <h1>{{.Title}}</h1>
+  <div class="tags">{{template "modeTag" .}}{{template "handoffTag" .}}</div>
+  {{if .Description}}<p class="desc">{{.Description}}</p>{{end}}
+
+  <div class="handoff box">
+    <strong>Handoff:</strong> {{.HandoffLabel}}
+    {{if .AvailableLater}}<p>📅 <strong>Available from {{.AvailableLong}}.</strong> You can claim it now — I'm still using it until then.</p>{{end}}
+    {{if .HandoffNote}}<p class="desc">{{.HandoffNote}}</p>{{end}}
+  </div>
+
+  <section class="action box">
+  {{if eq .Status "claimed"}}
+    {{if $winner}}
+      <p><strong>🎉 It's yours!</strong> I'll reach out about the handoff.</p>
+      <form method="post" action="/items/{{.ID}}/release" data-confirm="Give this back so someone else can have it?">
+        <button class="secondary">Give it back</button>
+      </form>
+    {{else}}
+      <p>Claimed by <strong>{{.WinnerDisplay}}</strong>.</p>
+    {{end}}
+  {{else if eq .Status "hidden"}}
+    <p class="muted">Hidden — friends can't see this yet.</p>
+  {{else if eq .Mode "fcfs"}}
+    <p>First come, first served.</p>
+    <form method="post" action="/items/{{.ID}}/claim"><button class="primary big">Claim it</button></form>
+  {{else if eq .Mode "lottery"}}
+    <p>🎲 <strong>Lottery.</strong> Enter before <time datetime="{{iso .LotteryEndsAt}}" data-local>{{fmt .LotteryEndsAt}}</time>
+      (<time datetime="{{iso .LotteryEndsAt}}" data-countdown>{{until .LotteryEndsAt}}</time> left).
+      A winner is picked at random from everyone who entered. {{.RequestCount}} entered so far.</p>
+    {{if .Mine}}
+      <p><strong>✅ You're entered.</strong></p>
+      <form method="post" action="/items/{{.ID}}/leave"><button class="secondary">Withdraw</button></form>
+    {{else}}
+      <form method="post" action="/items/{{.ID}}/enter"><button class="primary big">Enter the lottery</button></form>
+    {{end}}
+  {{else}}
+    <p>✋ <strong>Request it</strong> and I'll choose who it goes to. {{.RequestCount}} request{{if ne .RequestCount 1}}s{{end}} so far.</p>
+    <form method="post" action="/items/{{.ID}}/enter" class="stack">
+      <label>Anything I should know? <span class="muted">(optional)</span>
+        <textarea name="note" rows="2" maxlength="500" placeholder="e.g. I've been looking for one of these!">{{.MyNote}}</textarea></label>
+      <button class="primary big">{{if .Mine}}Update request{{else}}Request it{{end}}</button>
+    </form>
+    {{if .Mine}}<form method="post" action="/items/{{.ID}}/leave"><button class="secondary">Withdraw request</button></form>{{end}}
+  {{end}}
+  </section>
+
+  {{if $admin}}
+  <section class="admin box">
+    <h2>Admin</h2>
+    {{if .Requests}}
+    <h3>{{if eq .Mode "lottery"}}Entrants{{else}}Requests{{end}} ({{len .Requests}})</h3>
+    <ul class="requests">
+      {{range .Requests}}
+      <li>
+        <div><strong>{{.Display}}</strong> <span class="muted small">{{.Email}}</span>
+        {{if .Note}}<p class="desc small">{{.Note}}</p>{{end}}</div>
+        {{if ne $.Data.Item.Status "claimed"}}
+        <form method="post" action="/admin/items/{{$.Data.Item.ID}}/award" data-confirm="Give it to {{.Display}}?">
+          <input type="hidden" name="user_id" value="{{.UserID}}"><button class="small">Give to them</button>
+        </form>
+        {{end}}
+      </li>
+      {{end}}
+    </ul>
+    {{end}}
+    {{if eq .Status "claimed"}}
+      <p>Winner: {{.WinnerDisplay}} (<a href="mailto:{{.WinnerEmail}}">{{.WinnerEmail}}</a>)</p>
+      <div class="row">
+        <form method="post" action="/admin/items/{{.ID}}/pickedup"><input type="hidden" name="back" value="/items/{{.ID}}">
+          <button class="small">{{if .PickedUp}}✅ Handed off (undo){{else}}Mark handed off{{end}}</button></form>
+        <form method="post" action="/admin/items/{{.ID}}/reopen" data-confirm="Take it back from {{.WinnerDisplay}} and reopen?">
+          <button class="small secondary">Reopen</button></form>
+      </div>
+    {{end}}
+    <div class="row">
+      <a class="btn small" href="/admin/items/{{.ID}}/edit">Edit</a>
+      <form method="post" action="/admin/items/{{.ID}}/delete" data-confirm="Delete this item for good?"><button class="small danger">Delete</button></form>
+    </div>
+  </section>
+  {{end}}
+</article>
+{{end}}{{end}}
+{{end}}

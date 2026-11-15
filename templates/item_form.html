@@ -1,0 +1,62 @@
+{{define "content"}}
+{{with .Data.Item}}
+<h1>{{if .ID}}Edit item{{else}}Post an item{{end}}</h1>
+<form method="post" action="{{if .ID}}/admin/items/{{.ID}}{{else}}/admin/items{{end}}" enctype="multipart/form-data" class="stack" data-upload>
+  <label>Photos
+    <input type="file" name="photos" accept="image/*" multiple data-resize>
+    <span class="muted small">Resized on your phone before upload. Add more any time.</span>
+  </label>
+  <div class="previews" data-previews></div>
+  {{if .Photos}}
+  <div class="existing">
+    {{range .Photos}}
+    <div class="ph"><img src="/photos/{{.Filename}}" alt="">
+      <button class="small danger" form="del-photo-{{.ID}}">✕</button></div>
+    {{end}}
+  </div>
+  {{end}}
+
+  <label>Title <input name="title" required maxlength="120" value="{{.Title}}" placeholder="IKEA Kallax shelf"></label>
+  <label>Description <textarea name="description" rows="4" placeholder="Condition, size, quirks…">{{.Description}}</textarea></label>
+
+  <fieldset>
+    <legend>How do people get it?</legend>
+    <label class="radio"><input type="radio" name="mode" value="lottery" {{if eq .Mode "lottery"}}checked{{end}}>
+      <span><strong>🎲 Lottery</strong> — people enter, a random winner is drawn when it closes. Fairest for popular items.</span></label>
+    <label class="radio"><input type="radio" name="mode" value="fcfs" {{if eq .Mode "fcfs"}}checked{{end}}>
+      <span><strong>⚡ First come, first served</strong> — first tap wins.</span></label>
+    <label class="radio"><input type="radio" name="mode" value="pick" {{if eq .Mode "pick"}}checked{{end}}>
+      <span><strong>✋ Requests, I choose</strong> — people ask (with a note), you pick.</span></label>
+    <div class="lottery-opts" data-lottery-opts>
+      {{if and .ID (eq .Mode "lottery")}}
+      <p class="small">Currently closes <time datetime="{{iso .LotteryEndsAt}}" data-local>{{fmt .LotteryEndsAt}}</time>.</p>
+      <label>Change to close in <input type="number" name="lottery_hours" min="0.1" step="any" class="narrow" placeholder="—"> hours from now</label>
+      {{else}}
+      <label>Lottery closes in <input type="number" name="lottery_hours" min="0.1" step="any" value="24" class="narrow"> hours</label>
+      {{end}}
+    </div>
+    <p class="muted small">If nobody enters a lottery, it switches to first come, first served.</p>
+  </fieldset>
+
+  <fieldset>
+    <legend>Handoff</legend>
+    <label class="radio"><input type="radio" name="handoff" value="flexible" {{if eq .Handoff "flexible"}}checked{{end}}><span>Pickup or drop-off — we'll figure it out</span></label>
+    <label class="radio"><input type="radio" name="handoff" value="pickup" {{if eq .Handoff "pickup"}}checked{{end}}><span><strong>🚚 Must pick up</strong> — big or heavy; they come get it</span></label>
+    <label class="radio"><input type="radio" name="handoff" value="dropoff" {{if eq .Handoff "dropoff"}}checked{{end}}><span><strong>📬 I can drop off</strong></span></label>
+    <label>Available from <span class="muted">(optional)</span>
+      <input type="date" name="available_from" value="{{.AvailableFrom}}" class="narrow-date">
+      <span class="muted small">Still using it? People can claim it now but know they'll get it on/after this date.</span></label>
+    <label>Handoff notes <span class="muted">(optional)</span>
+      <input name="handoff_note" maxlength="300" value="{{.HandoffNote}}" placeholder="3rd floor walk-up, needs 2 people + a car"></label>
+  </fieldset>
+
+  {{if ne .Status "claimed"}}
+  <label class="radio"><input type="checkbox" name="status" value="hidden" {{if eq .Status "hidden"}}checked{{end}}>
+    <span>Hidden — save as a draft, don't show friends yet</span></label>
+  {{end}}
+
+  <button class="primary big" data-submit>{{if .ID}}Save{{else}}Post it{{end}}</button>
+</form>
+{{range .Photos}}<form id="del-photo-{{.ID}}" method="post" action="/admin/photos/{{.ID}}/delete" data-confirm="Remove this photo?"></form>{{end}}
+{{end}}
+{{end}}

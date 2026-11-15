@@ -1,0 +1,42 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+<meta name="robots" content="noindex">
+<title>{{if .Title}}{{.Title}} · {{end}}{{.Site}}</title>
+<link rel="stylesheet" href="/static/app.css">
+<link rel="icon" href="data:image/svg+xml,<svg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 100 100'><text y='.9em' font-size='90'>📦</text></svg>">
+<script src="/static/app.js" defer></script>
+</head>
+<body>
+<header class="top">
+  <a class="brand" href="/">{{.Site}}</a>
+  {{if .User}}
+  <nav>
+    <a href="/" {{if eq .Path "/"}}aria-current="page"{{end}}>Browse</a>
+    <a href="/mine" {{if eq .Path "/mine"}}aria-current="page"{{end}}>Mine</a>
+    {{if .IsAdmin}}
+    <a href="/admin/new" class="btn small">+ Post</a>
+    {{end}}
+    <details class="menu">
+      <summary aria-label="Menu">☰</summary>
+      <div class="menu-body">
+        <span class="muted">{{.User.Display}}</span>
+        <a href="/profile">Profile &amp; emails</a>
+        {{if .IsAdmin}}
+        <a href="/admin/handoffs">Handoffs</a>
+        <a href="/admin/people">People &amp; invites</a>
+        {{end}}
+        <form method="post" action="/logout"><button class="link">Sign out</button></form>
+      </div>
+    </details>
+  </nav>
+  {{end}}
+</header>
+<main>
+{{if .Flash}}<p class="flash" role="status">{{.Flash}}</p>{{end}}
+{{template "content" .}}
+</main>
+</body>
+</html>
