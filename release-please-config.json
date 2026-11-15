@@ -1,0 +1,13 @@
+{
+  "$schema": "https://raw.githubusercontent.com/googleapis/release-please/main/schemas/config.json",
+  "bootstrap-sha": "e043c0228704103ec0fc470ab5fc9026710e09dd",
+  "packages": {
+    ".": {
+      "release-type": "go",
+      "package-name": "marketplace",
+      "changelog-path": "CHANGELOG.md",
+      "include-component-in-tag": false,
+      "extra-files": ["flake.nix"]
+    }
+  }
+}

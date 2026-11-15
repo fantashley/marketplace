@@ -1,0 +1,55 @@
+name: release-please
+
+on:
+  push:
+    branches:
+      - main
+
+permissions:
+  contents: write
+  pull-requests: write
+
+jobs:
+  release-please:
+    # Only runs on pushes to main, never on fork PRs. GitHub-hosted anyway, to
+    # match ci.yml for this public repo.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: googleapis/release-please-action@v5
+        id: release
+        with:
+          # Defaults to release-please-config.json and .release-please-manifest.json
+          token: ${{ secrets.GITHUB_TOKEN }}
+
+      # Keep a floating `release` branch pointing at the most recent release, so
+      # the NixOS deployment can track releases (not main) by pinning
+      # `github:fantashley/marketplace/release`. Renovate's flake.lock refresh
+      # in fantashley/dotfiles then opens the PR that deploys it.
+      - name: Move the release branch to the new release
+        if: ${{ steps.release.outputs.release_created }}
+        uses: actions/github-script@v9
+        with:
+          script: |
+            const sha = "${{ steps.release.outputs.sha }}";
+            const { owner, repo } = context.repo;
+
+            try {
+              await github.rest.git.updateRef({
+                owner,
+                repo,
+                ref: "heads/release",
+                sha,
+                force: true,
+              });
+            } catch (error) {
+              if (error.status !== 404) {
+                throw error;
+              }
+
+              await github.rest.git.createRef({
+                owner,
+                repo,
+                ref: "refs/heads/release",
+                sha,
+              });
+            }

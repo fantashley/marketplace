@@ -68,6 +68,15 @@ go test -race ./...
 
 `nix build` also runs them, and CI (`.github/workflows/ci.yml`) runs both on every PR.
 
+## Releases
+
+Commit subjects follow [Conventional Commits](https://www.conventionalcommits.org)
+(`feat:`, `fix:`, `chore:`…). On every push to `main`, release-please keeps a
+release PR open with the next version and changelog. Merging that PR tags the
+release, bumps `version` in `flake.nix`, and moves the `release` branch to it.
+The NixOS deployment tracks `release`, so `main` can change freely between
+releases.
+
 ## Dependency updates
 
 Renovate (`renovate.json5`) maintains `flake.lock` and the GitHub Actions versions.

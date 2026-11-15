@@ -13,6 +13,12 @@
   timezone: 'America/Chicago',
   schedule: ['before 9am on monday'],
   enabledManagers: ['nix', 'github-actions'],
+  // Commit types follow release-please: flake.lock maintenance (nixpkgs and
+  // the Go toolchain) is fix(deps), so it cuts a patch release and reaches
+  // the nuc. Actions bumps are chore(ci) and don't.
+  semanticCommits: 'enabled',
+  semanticCommitType: 'fix',
+  semanticCommitScope: 'deps',
   // Renovate's nix manager is opt-in (beta). flake.lock is refreshed as a
   // whole with `nix flake update`; per-input PRs are disabled below.
   nix: { enabled: true },
@@ -27,6 +33,8 @@
     {
       matchManagers: ['github-actions'],
       groupName: 'GitHub Actions',
+      semanticCommitType: 'chore',
+      semanticCommitScope: 'ci',
     },
   ],
 }
