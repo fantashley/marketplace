@@ -44,8 +44,8 @@ func (a *App) userFromCookie(r *http.Request) *User {
 		return nil
 	}
 	var u User
-	err = a.db.QueryRow(`SELECT u.id, u.email, u.name, u.notify_new FROM sessions s JOIN users u ON u.id=s.user_id
-		WHERE s.hash=? AND s.expires_at>?`, hashToken(c.Value), time.Now().Unix()).Scan(&u.ID, &u.Email, &u.Name, &u.NotifyNew)
+	err = a.db.QueryRow(`SELECT u.id, u.email, u.name, u.notify_new, u.notify_replies FROM sessions s JOIN users u ON u.id=s.user_id
+		WHERE s.hash=? AND s.expires_at>?`, hashToken(c.Value), time.Now().Unix()).Scan(&u.ID, &u.Email, &u.Name, &u.NotifyNew, &u.NotifyReplies)
 	if err != nil || !a.emailAllowed(normEmail(u.Email)) {
 		return nil
 	}
@@ -223,8 +223,8 @@ func (a *App) profileSave(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, "/profile", http.StatusSeeOther)
 		return
 	}
-	notify := r.FormValue("notify_new") == "1"
-	if _, err := a.db.Exec(`UPDATE users SET name=?, notify_new=? WHERE id=?`, name, notify, u.ID); err != nil {
+	notify, replies := r.FormValue("notify_new") == "1", r.FormValue("notify_replies") == "1"
+	if _, err := a.db.Exec(`UPDATE users SET name=?, notify_new=?, notify_replies=? WHERE id=?`, name, notify, replies, u.ID); err != nil {
 		a.serverError(w, err)
 		return
 	}

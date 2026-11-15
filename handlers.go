@@ -138,14 +138,13 @@ func (a *App) leave(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) release(w http.ResponseWriter, r *http.Request) {
 	u, id := currentUser(r), pathID(r)
-	var winner int64
 	var title string
-	a.db.QueryRow(`SELECT COALESCE(winner_id,0), title FROM items WHERE id=? AND status='claimed'`, id).Scan(&winner, &title)
-	if winner != u.ID {
+	a.db.QueryRow(`SELECT title FROM items WHERE id=?`, id).Scan(&title)
+	if err := a.unclaim(id, u.ID); errors.Is(err, sql.ErrNoRows) {
+		// Not (or no longer) theirs, e.g. a double tap after it was passed on.
 		http.Redirect(w, r, itemURL(id), http.StatusSeeOther)
 		return
-	}
-	if err := a.unclaim(id); err != nil {
+	} else if err != nil {
 		a.serverError(w, err)
 		return
 	}
@@ -169,6 +168,7 @@ func (a *App) photo(w http.ResponseWriter, r *http.Request) {
 type itemForm struct {
 	Title, Description, Mode, Status, Handoff, HandoffNote, AvailableFrom string
 	EndsAt                                                                time.Time // zero = unchanged
+	LotterySecs                                                           int64     // window length chosen with EndsAt
 }
 
 func parseItemForm(r *http.Request) (itemForm, error) {
@@ -203,7 +203,8 @@ func parseItemForm(r *http.Request) (itemForm, error) {
 		if err != nil || hours <= 0 || hours > 24*30 {
 			return f, errors.New("Lottery length must be between 0 and 720 hours.")
 		}
-		f.EndsAt = time.Now().Add(time.Duration(hours * float64(time.Hour)))
+		f.LotterySecs = int64(hours * 3600)
+		f.EndsAt = time.Now().Add(time.Duration(f.LotterySecs) * time.Second)
 	}
 	return f, nil
 }
@@ -240,8 +241,8 @@ func (a *App) createItem(w http.ResponseWriter, r *http.Request) {
 	if f.Status == "open" {
 		published = now
 	}
-	res, err := a.db.Exec(`INSERT INTO items(title, description, mode, lottery_ends_at, status, handoff, handoff_note, available_from, published_at, created_at)
-		VALUES(?,?,?,?,?,?,?,?,?,?)`, f.Title, f.Description, f.Mode, ends, f.Status, f.Handoff, f.HandoffNote, f.AvailableFrom, published, now)
+	res, err := a.db.Exec(`INSERT INTO items(title, description, mode, lottery_ends_at, lottery_secs, status, handoff, handoff_note, available_from, published_at, created_at)
+		VALUES(?,?,?,?,?,?,?,?,?,?,?)`, f.Title, f.Description, f.Mode, ends, f.LotterySecs, f.Status, f.Handoff, f.HandoffNote, f.AvailableFrom, published, now)
 	if err != nil {
 		a.serverError(w, err)
 		return
@@ -258,6 +259,7 @@ func (a *App) createItem(w http.ResponseWriter, r *http.Request) {
 }
 
 func (a *App) editItemPage(w http.ResponseWriter, r *http.Request) {
+	a.settleLotteries()
 	it, err := a.getItem(0, pathID(r))
 	if err != nil {
 		http.NotFound(w, r)
@@ -281,29 +283,49 @@ func (a *App) updateItem(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, editURL, http.StatusSeeOther)
 		return
 	}
-	var curEnds int64
-	if err := a.db.QueryRow(`SELECT COALESCE(lottery_ends_at,0) FROM items WHERE id=?`, id).Scan(&curEnds); err != nil {
+	var curEnds, curSecs int64
+	var curStatus string
+	var notified bool
+	if err := a.db.QueryRow(`SELECT COALESCE(lottery_ends_at,0), lottery_secs, status, notified FROM items WHERE id=?`, id).
+		Scan(&curEnds, &curSecs, &curStatus, &notified); err != nil {
 		http.NotFound(w, r)
 		return
 	}
+	now := time.Now()
+	status := f.Status
+	if curStatus == "claimed" { // a claimed item stays claimed; the checkbox isn't shown
+		status = "claimed"
+	}
+	publishing := curStatus == "hidden" && status == "open"
+
 	var ends any
+	secs := curSecs
 	if f.Mode == "lottery" {
 		switch {
 		case !f.EndsAt.IsZero():
-			ends = f.EndsAt.Unix()
-		case curEnds != 0:
-			ends = curEnds
+			ends, secs = f.EndsAt.Unix(), f.LotterySecs
+		case publishing && curSecs > 0:
+			// Nobody could enter while it was a draft, so the window starts now.
+			ends = now.Add(time.Duration(curSecs) * time.Second).Unix()
 		default:
-			a.setFlash(w, "Set how long the lottery runs.")
+			ends = curEnds
+		}
+		if status == "open" && ends.(int64) <= now.Unix() {
+			a.setFlash(w, "That lottery's deadline has passed. Set how many hours it should run from now.")
 			http.Redirect(w, r, editURL, http.StatusSeeOther)
 			return
 		}
 	}
-	// A claimed item stays claimed; open/hidden only toggles visibility otherwise.
-	_, err = a.db.Exec(`UPDATE items SET title=?, description=?, mode=?, lottery_ends_at=?, handoff=?, handoff_note=?, available_from=?,
-		status=CASE WHEN status='claimed' THEN status ELSE ? END,
-		published_at=COALESCE(published_at, CASE WHEN ?='open' THEN ? END)
-		WHERE id=?`, f.Title, f.Description, f.Mode, ends, f.Handoff, f.HandoffNote, f.AvailableFrom, f.Status, f.Status, time.Now().Unix(), id)
+	publishedAt := sql.NullInt64{}
+	if publishing && !notified {
+		// (Re)publishing restarts the new-items quiet period; an item that was
+		// already announced before being hidden isn't announced twice.
+		publishedAt = sql.NullInt64{Int64: now.Unix(), Valid: true}
+	}
+	_, err = a.db.Exec(`UPDATE items SET title=?, description=?, mode=?, lottery_ends_at=?, lottery_secs=?, handoff=?, handoff_note=?, available_from=?,
+		status=?, published_at=CASE WHEN ? IS NOT NULL THEN ? ELSE published_at END
+		WHERE id=?`, f.Title, f.Description, f.Mode, ends, secs, f.Handoff, f.HandoffNote, f.AvailableFrom,
+		status, publishedAt, publishedAt, id)
 	if err != nil {
 		a.serverError(w, err)
 		return
@@ -411,7 +433,14 @@ func (a *App) award(w http.ResponseWriter, r *http.Request) {
 
 func (a *App) reopen(w http.ResponseWriter, r *http.Request) {
 	id := pathID(r)
-	if err := a.unclaim(id); err != nil && !errors.Is(err, sql.ErrNoRows) {
+	// The form carries the winner shown on the page, so a double submit or a
+	// stale tab can't take the item from whoever won the redraw.
+	winner, _ := strconv.ParseInt(r.FormValue("winner_id"), 10, 64)
+	if err := a.unclaim(id, winner); errors.Is(err, sql.ErrNoRows) {
+		a.setFlash(w, "It had already changed hands, so nothing was reopened.")
+		http.Redirect(w, r, itemURL(id), http.StatusSeeOther)
+		return
+	} else if err != nil {
 		a.serverError(w, err)
 		return
 	}

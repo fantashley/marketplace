@@ -55,6 +55,28 @@
   {{end}}
   </section>
 
+  <section class="comments" id="comments">
+    <h2>Questions &amp; comments{{if .Comments}} ({{len .Comments}}){{end}}</h2>
+    {{range .Comments}}
+    <div class="comment{{if .ByAdmin}} by-admin{{end}}" id="c{{.ID}}">
+      <div class="comment-head">
+        <strong>{{.Display}}</strong>{{if .ByAdmin}} <span class="tag poster">Giving it away</span>{{end}}
+        <time class="muted small" datetime="{{iso .CreatedAt}}" title="{{fmt .CreatedAt}}">{{ago .CreatedAt}}</time>
+        {{if or $admin (eq .UserID $.User.ID)}}
+        <form method="post" action="/comments/{{.ID}}/delete" data-confirm="Delete this comment?"><button class="link small danger">Delete</button></form>
+        {{end}}
+      </div>
+      <p class="desc">{{.Body}}</p>
+    </div>
+    {{else}}
+    <p class="muted small">No questions yet. Ask about size, condition, or anything else; everyone can see the answers.</p>
+    {{end}}
+    <form method="post" action="/items/{{.ID}}/comments" class="stack comment-form">
+      <textarea name="body" rows="2" maxlength="1000" required placeholder="{{if $admin}}Reply or add a note…{{else}}Ask a question…{{end}}"></textarea>
+      <button class="primary">Post</button>
+    </form>
+  </section>
+
   {{if $admin}}
   <section class="admin box">
     <h2>Admin</h2>
@@ -80,6 +102,7 @@
         <form method="post" action="/admin/items/{{.ID}}/pickedup"><input type="hidden" name="back" value="/items/{{.ID}}">
           <button class="small">{{if .PickedUp}}✅ Handed off (undo){{else}}Mark handed off{{end}}</button></form>
         <form method="post" action="/admin/items/{{.ID}}/reopen" data-confirm="Take it back from {{.WinnerDisplay}} and reopen?">
+          <input type="hidden" name="winner_id" value="{{.WinnerID}}">
           <button class="small secondary">Reopen</button></form>
       </div>
     {{end}}

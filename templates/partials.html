@@ -3,7 +3,7 @@
   <div class="thumb">{{with .Cover}}<img src="/photos/{{.}}" alt="" loading="lazy">{{else}}<span>📦</span>{{end}}</div>
   <div class="card-body">
     <h3>{{.Title}}</h3>
-    <div class="tags">{{template "modeTag" .}}{{template "handoffTag" .}}</div>
+    <div class="tags">{{template "modeTag" .}}{{template "handoffTag" .}}{{if .CommentCount}}<span class="tag">💬 {{.CommentCount}}</span>{{end}}</div>
   </div>
 </a>
 {{end}}

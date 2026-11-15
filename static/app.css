@@ -94,6 +94,7 @@ nav .btn.small { background: var(--accent); color: var(--accent-text); border-co
 .secondary { background: transparent; }
 .danger { color: var(--danger); }
 button.link { background: none; border: 0; padding: 0; color: var(--text); font-weight: 400; }
+button.link.danger { color: var(--danger); }
 button:disabled { opacity: .5; cursor: wait; }
 
 .stack { display: flex; flex-direction: column; gap: 14px; }
@@ -124,3 +125,14 @@ label.radio input { margin-top: 4px; width: 18px; height: 18px; flex: none; acce
 .check { width: 28px; height: 28px; padding: 0; border-radius: 8px; display: grid; place-items: center; }
 .check.done { background: var(--fcfs); color: var(--fcfs-text); border-color: transparent; }
 .struck { text-decoration: line-through; color: var(--muted); }
+
+.comments h2 { margin-top: 24px; }
+.comment { padding: 10px 0; border-top: 1px solid var(--line); }
+.comment:target { background: var(--accent-soft); border-radius: 8px; padding: 10px; }
+.comment-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 8px; }
+.comment-head form { margin-left: auto; }
+.comment p { margin: 4px 0 0; }
+.comment.by-admin { border-left: 3px solid var(--accent); padding-left: 10px; }
+.tag.poster { background: var(--accent-soft); color: var(--accent); }
+.comment-form { margin-top: 12px; }
+.comment-form button { align-self: flex-end; }

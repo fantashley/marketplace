@@ -8,6 +8,7 @@ import (
 	"log"
 	"net/http"
 	"net/url"
+	"strconv"
 	"time"
 )
 
@@ -35,11 +36,29 @@ func humanUntil(t time.Time) string {
 	}
 }
 
+func humanAgo(t time.Time) string {
+	d := time.Since(t)
+	switch {
+	case d < time.Minute:
+		return "just now"
+	case d < time.Hour:
+		return fmt.Sprintf("%d min ago", int(d.Minutes()))
+	case d < 24*time.Hour:
+		return fmt.Sprintf("%dh ago", int(d.Hours()))
+	case d < 7*24*time.Hour:
+		return fmt.Sprintf("%dd ago", int(d.Hours()/24))
+	default:
+		return t.Format("Jan 2")
+	}
+}
+
 func (a *App) loadTemplates() error {
 	funcs := template.FuncMap{
 		"iso":   func(t time.Time) string { return t.UTC().Format(time.RFC3339) },
 		"fmt":   func(t time.Time) string { return t.Format("Mon Jan 2, 3:04 PM MST") },
 		"until": humanUntil,
+		"ago":   humanAgo,
+		"hours": func(secs int64) string { return strconv.FormatFloat(float64(secs)/3600, 'f', -1, 64) },
 	}
 	pages, err := fs.Glob(templateFS, "templates/*.html")
 	if err != nil {

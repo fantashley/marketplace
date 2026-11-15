@@ -28,7 +28,10 @@
     <label class="radio"><input type="radio" name="mode" value="pick" {{if eq .Mode "pick"}}checked{{end}}>
       <span><strong>✋ Requests, I choose</strong> — people ask (with a note), you pick.</span></label>
     <div class="lottery-opts" data-lottery-opts>
-      {{if and .ID (eq .Mode "lottery")}}
+      {{if and .ID (eq .Mode "lottery") (eq .Status "hidden") .LotterySecs}}
+      <p class="small">Runs for {{hours .LotterySecs}} hours, starting when you publish it.</p>
+      <label>Change to <input type="number" name="lottery_hours" min="0.1" step="any" class="narrow" placeholder="—"> hours</label>
+      {{else if and .ID (eq .Mode "lottery")}}
       <p class="small">Currently closes <time datetime="{{iso .LotteryEndsAt}}" data-local>{{fmt .LotteryEndsAt}}</time>.</p>
       <label>Change to close in <input type="number" name="lottery_hours" min="0.1" step="any" class="narrow" placeholder="—"> hours from now</label>
       {{else}}

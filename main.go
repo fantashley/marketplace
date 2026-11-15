@@ -14,6 +14,7 @@ import (
 	"path/filepath"
 	"strconv"
 	"strings"
+	"sync"
 	"syscall"
 	"time"
 )
@@ -34,6 +35,8 @@ type Config struct {
 	// emails on the invite list (Admin → People) can.
 	OpenSignup bool
 	Mail       MailConfig
+	// MailInterval is the minimum gap between outgoing emails (from MAIL_RATE).
+	MailInterval time.Duration
 	// New-item emails go out once nothing new has been posted for this long,
 	// so posting ten things in a row sends one email.
 	NewItemsDelay time.Duration
@@ -45,6 +48,11 @@ type App struct {
 	tmpl     map[string]*template.Template
 	photoDir string
 	secure   bool
+
+	send       func(to, subject, body string) error // the mail transport; swapped out in tests
+	mailMu     sync.Mutex
+	nextMailAt time.Time
+	outboxKick chan struct{}
 }
 
 func env(key, def string) string {
@@ -83,9 +91,14 @@ func loadConfig() Config {
 	if err != nil {
 		log.Fatalf("OPEN_SIGNUP: %v", err)
 	}
+	mailRate, err := strconv.ParseFloat(env("MAIL_RATE", "2"), 64)
+	if err != nil || mailRate <= 0 {
+		log.Fatalf("MAIL_RATE must be a positive number of emails per second")
+	}
 	return Config{
 		NewItemsDelay: delay,
 		OpenSignup:    openSignup,
+		MailInterval:  time.Duration(float64(time.Second) / mailRate),
 		Addr:          env("ADDR", ":8080"),
 		BaseURL:       strings.TrimRight(env("BASE_URL", "http://localhost:8080"), "/"),
 		DataDir:       env("DATA_DIR", "./data"),
@@ -119,7 +132,7 @@ func main() {
 		log.Print("no mail transport configured: emails (including login links) are printed to this log instead of sent")
 	}
 
-	app := &App{cfg: cfg, photoDir: filepath.Join(cfg.DataDir, "photos"), secure: strings.HasPrefix(cfg.BaseURL, "https://")}
+	app := newApp(cfg)
 	if err := os.MkdirAll(app.photoDir, 0o755); err != nil {
 		log.Fatal(err)
 	}
@@ -135,6 +148,7 @@ func main() {
 	ctx, stop := signal.NotifyContext(context.Background(), os.Interrupt, syscall.SIGTERM)
 	defer stop()
 	go app.backgroundLoop(ctx)
+	go app.outboxLoop(ctx)
 
 	srv := &http.Server{
 		Addr:              cfg.Addr,
@@ -151,6 +165,17 @@ func main() {
 	if err := srv.ListenAndServe(); err != nil && !errors.Is(err, http.ErrServerClosed) {
 		log.Fatal(err)
 	}
+}
+
+func newApp(cfg Config) *App {
+	a := &App{
+		cfg:        cfg,
+		photoDir:   filepath.Join(cfg.DataDir, "photos"),
+		secure:     strings.HasPrefix(cfg.BaseURL, "https://"),
+		outboxKick: make(chan struct{}, 1),
+	}
+	a.send = a.deliver
+	return a
 }
 
 func (a *App) routes() http.Handler {
@@ -178,6 +203,8 @@ func (a *App) routes() http.Handler {
 	mux.Handle("POST /items/{id}/leave", u(a.leave))
 	mux.Handle("POST /items/{id}/release", u(a.release))
 	mux.Handle("GET /photos/{name}", u(a.photo))
+	mux.Handle("POST /items/{id}/comments", u(a.postComment))
+	mux.Handle("POST /comments/{id}/delete", u(a.deleteComment))
 
 	ad := a.requireAdmin
 	mux.Handle("GET /admin/new", ad(a.newItemPage))

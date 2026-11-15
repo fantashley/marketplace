@@ -35,8 +35,9 @@ type MailConfig struct {
 
 func (m MailConfig) enabled() bool { return m.ResendAPIKey != "" || m.SMTP.Host != "" }
 
-// sendMail delivers a plain-text email, or logs it when no transport is configured.
-func (a *App) sendMail(to, subject, body string) error {
+// deliver hands one plain-text email to the configured transport, or logs it
+// when there is none. Callers go through sendMail (throttled) or notify (queued).
+func (a *App) deliver(to, subject, body string) error {
 	m := a.cfg.Mail
 	switch {
 	case m.ResendAPIKey != "":
@@ -47,15 +48,6 @@ func (a *App) sendMail(to, subject, body string) error {
 		log.Printf("[mail not configured] To: %s | Subject: %s\n%s", to, subject, body)
 		return nil
 	}
-}
-
-// notify sends mail in the background; failures are only logged.
-func (a *App) notify(to, subject, body string) {
-	go func() {
-		if err := a.sendMail(to, subject, body); err != nil {
-			log.Printf("mail to %s failed: %v", to, err)
-		}
-	}()
 }
 
 func sendResend(m MailConfig, to, subject, body string) error {

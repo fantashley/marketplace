@@ -7,6 +7,8 @@
   <label>Your name <input name="name" required maxlength="60" value="{{.User.Name}}" autocomplete="name" {{if not .User.Name}}autofocus{{end}}></label>
   <label class="radio"><input type="checkbox" name="notify_new" value="1" {{if or .User.NotifyNew (not .User.Name)}}checked{{end}}>
     <span>Email me when new items are posted</span></label>
+  <label class="radio"><input type="checkbox" name="notify_replies" value="1" {{if or .User.NotifyReplies (not .User.Name)}}checked{{end}}>
+    <span>Email me when someone replies on an item I've commented on</span></label>
   <p class="muted small">Signed in as {{.User.Email}}. You'll always get an email when something becomes yours.</p>
   <button class="primary big">Save</button>
 </form>

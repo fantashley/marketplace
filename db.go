@@ -14,6 +14,7 @@ CREATE TABLE IF NOT EXISTS users (
 	email TEXT NOT NULL UNIQUE,
 	name TEXT NOT NULL DEFAULT '',
 	notify_new INTEGER NOT NULL DEFAULT 1,
+	notify_replies INTEGER NOT NULL DEFAULT 1,
 	unsub_token TEXT NOT NULL UNIQUE,
 	created_at INTEGER NOT NULL
 );
@@ -39,6 +40,7 @@ CREATE TABLE IF NOT EXISTS items (
 	description TEXT NOT NULL DEFAULT '',
 	mode TEXT NOT NULL CHECK (mode IN ('fcfs','lottery','pick')),
 	lottery_ends_at INTEGER,
+	lottery_secs INTEGER NOT NULL DEFAULT 0, -- last chosen window length; a published draft restarts it
 	status TEXT NOT NULL DEFAULT 'open' CHECK (status IN ('open','claimed','hidden')),
 	winner_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
 	claimed_at INTEGER,
@@ -64,7 +66,50 @@ CREATE TABLE IF NOT EXISTS requests (
 	created_at INTEGER NOT NULL,
 	PRIMARY KEY (item_id, user_id)
 );
+CREATE TABLE IF NOT EXISTS comments (
+	id INTEGER PRIMARY KEY,
+	item_id INTEGER NOT NULL REFERENCES items(id) ON DELETE CASCADE,
+	user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+	body TEXT NOT NULL,
+	created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS comments_item ON comments(item_id, id);
+-- Every non-interactive email goes through here: rows survive restarts and
+-- failed sends are retried with backoff (see outbox.go).
+CREATE TABLE IF NOT EXISTS outbox (
+	id INTEGER PRIMARY KEY,
+	to_email TEXT NOT NULL,
+	subject TEXT NOT NULL,
+	body TEXT NOT NULL,
+	attempts INTEGER NOT NULL DEFAULT 0,
+	next_attempt_at INTEGER NOT NULL,
+	last_error TEXT NOT NULL DEFAULT '',
+	created_at INTEGER NOT NULL
+);
+CREATE INDEX IF NOT EXISTS outbox_due ON outbox(next_attempt_at, id);
 `
+
+// columns added after the first release; CREATE TABLE IF NOT EXISTS won't add
+// them to an existing database.
+var addedColumns = []struct{ table, column, def string }{
+	{"users", "notify_replies", "INTEGER NOT NULL DEFAULT 1"},
+	{"items", "lottery_secs", "INTEGER NOT NULL DEFAULT 0"},
+}
+
+func migrate(db *sql.DB) error {
+	for _, c := range addedColumns {
+		var n int
+		if err := db.QueryRow(`SELECT COUNT(*) FROM pragma_table_info(?) WHERE name=?`, c.table, c.column).Scan(&n); err != nil {
+			return err
+		}
+		if n == 0 {
+			if _, err := db.Exec(`ALTER TABLE ` + c.table + ` ADD COLUMN ` + c.column + ` ` + c.def); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
 
 func openDB(path string) (*sql.DB, error) {
 	db, err := sql.Open("sqlite", "file:"+path+"?_pragma=foreign_keys(1)&_pragma=busy_timeout(5000)&_pragma=journal_mode(WAL)")
@@ -77,14 +122,18 @@ func openDB(path string) (*sql.DB, error) {
 	if _, err := db.Exec(schema); err != nil {
 		return nil, err
 	}
+	if err := migrate(db); err != nil {
+		return nil, err
+	}
 	return db, nil
 }
 
 type User struct {
-	ID        int64
-	Email     string
-	Name      string
-	NotifyNew bool
+	ID            int64
+	Email         string
+	Name          string
+	NotifyNew     bool
+	NotifyReplies bool
 }
 
 func displayName(name, email string) string {
@@ -114,6 +163,18 @@ type Request struct {
 
 func (r Request) Display() string { return displayName(r.Name, r.Email) }
 
+type Comment struct {
+	ID        int64
+	UserID    int64
+	Name      string
+	Email     string
+	Body      string
+	ByAdmin   bool // posted by the person giving things away
+	CreatedAt time.Time
+}
+
+func (c Comment) Display() string { return displayName(c.Name, c.Email) }
+
 type Item struct {
 	ID            int64
 	Title         string
@@ -131,9 +192,12 @@ type Item struct {
 	CreatedAt     time.Time
 	Photos        []Photo
 	RequestCount  int
+	CommentCount  int
+	LotterySecs   int64
 	Mine          bool // current user has requested / entered
 	MyNote        string
 	Requests      []Request // populated on the item page
+	Comments      []Comment // populated on the item page
 }
 
 func (i *Item) Cover() string {
@@ -188,6 +252,7 @@ const itemSelect = `
 SELECT i.id, i.title, i.description, i.mode, i.status, COALESCE(i.lottery_ends_at,0),
 	COALESCE(i.winner_id,0), COALESCE(u.name,''), COALESCE(u.email,''), i.picked_up, i.handoff, i.handoff_note, i.available_from, i.created_at,
 	(SELECT COUNT(*) FROM requests r WHERE r.item_id=i.id),
+	(SELECT COUNT(*) FROM comments c WHERE c.item_id=i.id), i.lottery_secs,
 	COALESCE((SELECT r.note FROM requests r WHERE r.item_id=i.id AND r.user_id=?), char(0))
 FROM items i LEFT JOIN users u ON u.id=i.winner_id`
 
@@ -196,7 +261,7 @@ func scanItem(sc interface{ Scan(...any) error }) (*Item, error) {
 	var ends, created int64
 	if err := sc.Scan(&it.ID, &it.Title, &it.Description, &it.Mode, &it.Status, &ends,
 		&it.WinnerID, &it.WinnerName, &it.WinnerEmail, &it.PickedUp, &it.Handoff, &it.HandoffNote, &it.AvailableFrom, &created,
-		&it.RequestCount, &it.MyNote); err != nil {
+		&it.RequestCount, &it.CommentCount, &it.LotterySecs, &it.MyNote); err != nil {
 		return nil, err
 	}
 	it.LotteryEndsAt, it.CreatedAt = unix(ends), unix(created)
@@ -276,11 +341,31 @@ func (a *App) getItem(viewerID, id int64) (*Item, error) {
 		r.CreatedAt = unix(created)
 		it.Requests = append(it.Requests, r)
 	}
-	return it, rows.Err()
+	if err := rows.Err(); err != nil {
+		return nil, err
+	}
+	crows, err := a.db.Query(`SELECT c.id, c.user_id, u.name, u.email, c.body, c.created_at
+		FROM comments c JOIN users u ON u.id=c.user_id WHERE c.item_id=? ORDER BY c.id`, id)
+	if err != nil {
+		return nil, err
+	}
+	defer crows.Close()
+	for crows.Next() {
+		var c Comment
+		var created int64
+		if err := crows.Scan(&c.ID, &c.UserID, &c.Name, &c.Email, &c.Body, &created); err != nil {
+			return nil, err
+		}
+		c.CreatedAt = unix(created)
+		c.ByAdmin = a.cfg.AdminEmails[normEmail(c.Email)]
+		it.Comments = append(it.Comments, c)
+	}
+	return it, crows.Err()
 }
 
 func (a *App) userByID(id int64) (*User, error) {
 	var u User
-	err := a.db.QueryRow(`SELECT id, email, name, notify_new FROM users WHERE id=?`, id).Scan(&u.ID, &u.Email, &u.Name, &u.NotifyNew)
+	err := a.db.QueryRow(`SELECT id, email, name, notify_new, notify_replies FROM users WHERE id=?`, id).
+		Scan(&u.ID, &u.Email, &u.Name, &u.NotifyNew, &u.NotifyReplies)
 	return &u, err
 }

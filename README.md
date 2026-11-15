@@ -16,7 +16,15 @@ rid of with photos and descriptions, and friends claim them. Everything is free.
   `OPEN_SIGNUP=true` to let anyone in.
 - **New-item emails**: batched, sent once you've stopped posting for
   `NEW_ITEMS_DELAY`. Each email has a one-click unsubscribe.
+- **Questions & comments** on each item, visible to everyone so a question
+  only needs answering once. The poster gets an email for every comment, and
+  people who commented get an email when there's a reply (they can turn that
+  off in their profile). Authors can delete their own comments; admins can
+  delete any.
 - **Winner emails**, and admin emails on claims, requests and give-backs.
+- **Reliable email**: everything except sign-in links goes through a database
+  outbox. It's sent at `MAIL_RATE` and retried with backoff if the provider
+  rejects it (e.g. a Resend 429).
 - **Give it back**: a winner can release an item. Lotteries redraw among the
   remaining entrants.
 - **Handoffs checklist** (Admin → Handoffs): claimed items grouped by person,
@@ -46,10 +54,19 @@ printed to the log.
 | `ADDR` | `:8080` | Listen address |
 | `DATA_DIR` | `./data` | SQLite DB + photos |
 | `NEW_ITEMS_DELAY` | `10m` | Quiet period before the new-items email |
+| `MAIL_RATE` | `2` | Max emails per second. Resend allows 10/s per team, shared by every app using the account |
 | `OPEN_SIGNUP` | `false` | Let anyone with an email sign in, ignoring the invite list |
 | `MAIL_FROM` | | e.g. `Free Stuff <stuff@mail.example.com>` |
 | `RESEND_API_KEY` / `_FILE` | | Send via Resend (takes precedence) |
 | `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD` / `_FILE` | | Send via SMTP |
+
+## Tests
+
+```sh
+go test -race ./...
+```
+
+`nix build` also runs them.
 
 ## NixOS
 

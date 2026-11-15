@@ -83,6 +83,15 @@
               '';
             };
 
+            mailRate = mkOption {
+              type = types.numbers.positive;
+              default = 2;
+              description = ''
+                Maximum emails per second. Resend allows 10/s per team, shared
+                by every app sending from the same account.
+              '';
+            };
+
             newItemsDelay = mkOption {
               type = types.str;
               default = "10m";
@@ -144,6 +153,7 @@
                 SITE_TITLE = cfg.siteTitle;
                 ADMIN_EMAILS = lib.concatStringsSep "," cfg.adminEmails;
                 NEW_ITEMS_DELAY = cfg.newItemsDelay;
+                MAIL_RATE = toString cfg.mailRate;
                 OPEN_SIGNUP = lib.boolToString cfg.openSignup;
               }
               // lib.optionalAttrs (cfg.mail.from != null) { MAIL_FROM = cfg.mail.from; }

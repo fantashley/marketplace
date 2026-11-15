@@ -105,7 +105,12 @@ func (a *App) draw(itemID int64) error {
 // unclaim puts a claimed item back up. The previous winner's request is
 // dropped so they can't win it again. Lotteries redraw immediately among the
 // remaining entrants (or fall back to first come, first served).
-func (a *App) unclaim(itemID int64) error {
+//
+// It only acts while expectedWinner still holds the item, checked inside the
+// same transaction as the change, so a repeated or stale request can't take
+// the item away from whoever won the redraw. It returns sql.ErrNoRows when the
+// item isn't claimed by expectedWinner.
+func (a *App) unclaim(itemID, expectedWinner int64) error {
 	tx, err := a.db.Begin()
 	if err != nil {
 		return err
@@ -113,7 +118,8 @@ func (a *App) unclaim(itemID int64) error {
 	defer tx.Rollback()
 	var mode string
 	var winner sql.NullInt64
-	if err := tx.QueryRow(`SELECT mode, winner_id FROM items WHERE id=? AND status='claimed'`, itemID).Scan(&mode, &winner); err != nil {
+	if err := tx.QueryRow(`SELECT mode, winner_id FROM items WHERE id=? AND status='claimed' AND winner_id=?`,
+		itemID, expectedWinner).Scan(&mode, &winner); err != nil {
 		return err
 	}
 	if winner.Valid {
@@ -168,27 +174,41 @@ func (a *App) notifyAdmins(subject, body string) {
 }
 
 // sendNewItemDigest emails everyone who opted in about items published since
-// the last digest, once posting has been quiet for newItemsQuietPeriod.
+// the last digest, once posting has been quiet for NewItemsDelay.
+//
+// Hidden items are left alone: they stay eligible and are announced once
+// they're published again. Marking items notified and queueing every
+// recipient's email happen in one transaction, and the outbox retries failed
+// sends, so a rejected send can't lose an announcement.
 func (a *App) sendNewItemDigest(now time.Time) {
+	const pendingWhere = `notified=0 AND published_at IS NOT NULL AND status!='hidden'`
 	var pending int
 	var latest int64
-	a.db.QueryRow(`SELECT COUNT(*), COALESCE(MAX(published_at),0) FROM items WHERE notified=0 AND published_at IS NOT NULL`).
-		Scan(&pending, &latest)
+	a.db.QueryRow(`SELECT COUNT(*), COALESCE(MAX(published_at),0) FROM items WHERE `+pendingWhere).Scan(&pending, &latest)
 	if pending == 0 || now.Sub(unix(latest)) < a.cfg.NewItemsDelay {
 		return
 	}
-	items, err := a.listItems(0, "i.notified=0 AND i.published_at IS NOT NULL AND i.status='open'")
+	items, err := a.listItems(0, "i.notified=0 AND i.published_at IS NOT NULL AND i.published_at<=? AND i.status='open'", latest)
 	if err != nil {
 		log.Printf("digest: %v", err)
 		return
 	}
-	// Mark first: a crash after this skips one digest rather than repeating it.
-	if _, err := a.db.Exec(`UPDATE items SET notified=1 WHERE notified=0 AND published_at IS NOT NULL AND published_at<=?`, latest); err != nil {
-		log.Printf("digest: %v", err)
-		return
-	}
-	if len(items) == 0 { // everything got claimed before the email went out
-		return
+	type recipient struct{ email, unsub string }
+	var recipients []recipient
+	if len(items) > 0 { // otherwise everything got claimed before the email went out
+		rows, err := a.db.Query(`SELECT email, unsub_token FROM users WHERE notify_new=1`)
+		if err != nil {
+			log.Printf("digest: %v", err)
+			return
+		}
+		for rows.Next() {
+			var r recipient
+			rows.Scan(&r.email, &r.unsub)
+			if !a.cfg.AdminEmails[r.email] {
+				recipients = append(recipients, r)
+			}
+		}
+		rows.Close()
 	}
 	var list strings.Builder
 	for _, it := range items {
@@ -198,30 +218,39 @@ func (a *App) sendNewItemDigest(now time.Time) {
 		}
 		fmt.Fprintf(&list, "• %s\n  %s · %s%s\n  %s/items/%d\n\n", it.Title, a.modeSummary(it), it.HandoffLabel(), avail, a.cfg.BaseURL, it.ID)
 	}
-	subject := fmt.Sprintf("New on %s: %s", a.cfg.SiteTitle, items[0].Title)
-	if len(items) > 1 {
+	var subject string
+	if len(items) == 1 {
+		subject = fmt.Sprintf("New on %s: %s", a.cfg.SiteTitle, items[0].Title)
+	} else if len(items) > 1 {
 		subject = fmt.Sprintf("%d new items on %s", len(items), a.cfg.SiteTitle)
 	}
-	rows, err := a.db.Query(`SELECT email, unsub_token FROM users WHERE notify_new=1`)
+	tx, err := a.db.Begin()
 	if err != nil {
 		log.Printf("digest: %v", err)
 		return
 	}
-	defer rows.Close()
-	sent := 0
-	for rows.Next() {
-		var email, unsub string
-		rows.Scan(&email, &unsub)
-		if a.cfg.AdminEmails[email] {
-			continue
-		}
+	defer tx.Rollback()
+	if _, err := tx.Exec(`UPDATE items SET notified=1 WHERE `+pendingWhere+` AND published_at<=?`, latest); err != nil {
+		log.Printf("digest: %v", err)
+		return
+	}
+	for _, r := range recipients {
 		body := "New things are up for grabs:\n\n" + list.String() +
 			"Browse everything: " + a.cfg.BaseURL + "/\n\n" +
-			"Don't want these emails? " + a.cfg.BaseURL + "/unsubscribe?t=" + url.QueryEscape(unsub) + "\n"
-		a.notify(email, subject, body)
-		sent++
+			"Don't want these emails? " + a.cfg.BaseURL + "/unsubscribe?t=" + url.QueryEscape(r.unsub) + "\n"
+		if err := enqueueMail(tx, r.email, subject, body); err != nil {
+			log.Printf("digest: %v", err)
+			return
+		}
 	}
-	log.Printf("new-items digest: %d items to %d people", len(items), sent)
+	if err := tx.Commit(); err != nil {
+		log.Printf("digest: %v", err)
+		return
+	}
+	a.kickOutbox()
+	if len(items) > 0 {
+		log.Printf("new-items digest: %d items queued for %d people", len(items), len(recipients))
+	}
 }
 
 func (a *App) modeSummary(it *Item) string {
