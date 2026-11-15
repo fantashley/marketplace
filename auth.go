@@ -46,7 +46,7 @@ func (a *App) userFromCookie(r *http.Request) *User {
 	var u User
 	err = a.db.QueryRow(`SELECT u.id, u.email, u.name, u.notify_new FROM sessions s JOIN users u ON u.id=s.user_id
 		WHERE s.hash=? AND s.expires_at>?`, hashToken(c.Value), time.Now().Unix()).Scan(&u.ID, &u.Email, &u.Name, &u.NotifyNew)
-	if err != nil {
+	if err != nil || !a.emailAllowed(normEmail(u.Email)) {
 		return nil
 	}
 	return &u
@@ -87,14 +87,9 @@ func safeNext(next string) string {
 }
 
 // emailAllowed: admins always; everyone else only if they're on the invite
-// list, or if the invite list is empty (open to anyone with the link).
+// list, unless OPEN_SIGNUP lets anyone with an inbox in.
 func (a *App) emailAllowed(email string) bool {
-	if a.cfg.AdminEmails[email] {
-		return true
-	}
-	var n int
-	a.db.QueryRow(`SELECT COUNT(*) FROM allowed_emails`).Scan(&n)
-	if n == 0 {
+	if a.cfg.AdminEmails[email] || a.cfg.OpenSignup {
 		return true
 	}
 	var ok int

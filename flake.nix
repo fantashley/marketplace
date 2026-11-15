@@ -73,6 +73,16 @@
               description = "Emails that can post and manage items. They can always sign in.";
             };
 
+            openSignup = mkOption {
+              type = types.bool;
+              default = false;
+              description = ''
+                Let anyone with an email address sign in. By default only
+                adminEmails and the invite list (managed in the app under
+                Admin → People) can.
+              '';
+            };
+
             newItemsDelay = mkOption {
               type = types.str;
               default = "10m";
@@ -134,6 +144,7 @@
                 SITE_TITLE = cfg.siteTitle;
                 ADMIN_EMAILS = lib.concatStringsSep "," cfg.adminEmails;
                 NEW_ITEMS_DELAY = cfg.newItemsDelay;
+                OPEN_SIGNUP = lib.boolToString cfg.openSignup;
               }
               // lib.optionalAttrs (cfg.mail.from != null) { MAIL_FROM = cfg.mail.from; }
               // lib.optionalAttrs (cfg.mail.resendApiKeyFile != null) { RESEND_API_KEY_FILE = "%d/resend_api_key"; }

@@ -506,7 +506,7 @@ func (a *App) peoplePage(w http.ResponseWriter, r *http.Request) {
 		p.Name = displayName(p.Name, p.Email)
 		people = append(people, p)
 	}
-	a.render(w, r, "people.html", "People", map[string]any{"Allowed": strings.Join(allowed, "\n"), "People": people})
+	a.render(w, r, "people.html", "People", map[string]any{"Allowed": strings.Join(allowed, "\n"), "People": people, "OpenSignup": a.cfg.OpenSignup})
 }
 
 func (a *App) peopleSave(w http.ResponseWriter, r *http.Request) {

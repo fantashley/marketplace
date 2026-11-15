@@ -9,8 +9,11 @@ rid of with photos and descriptions, and friends claim them. Everything is free.
 - **Handoff**: *must pick up* / *I can drop off* / *flexible*, plus a free-text
   note ("3rd floor, bring 2 people").
 - **Available from**: claim now, hand off later, for things you're still using.
-- **Email magic-link sign-in**, an optional invite list (Admin → People), and
-  a display-name prompt on first sign-in.
+- **Invite-only email magic-link sign-in**: only admins and emails on the
+  invite list (Admin → People) can sign in. Others get the same "check your
+  email" page but no email, so bots can't sign up or make the app email
+  strangers. Removing someone from the list signs them out. Set
+  `OPEN_SIGNUP=true` to let anyone in.
 - **New-item emails**: batched, sent once you've stopped posting for
   `NEW_ITEMS_DELAY`. Each email has a one-click unsubscribe.
 - **Winner emails**, and admin emails on claims, requests and give-backs.
@@ -43,6 +46,7 @@ printed to the log.
 | `ADDR` | `:8080` | Listen address |
 | `DATA_DIR` | `./data` | SQLite DB + photos |
 | `NEW_ITEMS_DELAY` | `10m` | Quiet period before the new-items email |
+| `OPEN_SIGNUP` | `false` | Let anyone with an email sign in, ignoring the invite list |
 | `MAIL_FROM` | | e.g. `Free Stuff <stuff@mail.example.com>` |
 | `RESEND_API_KEY` / `_FILE` | | Send via Resend (takes precedence) |
 | `SMTP_HOST`, `SMTP_PORT` (587), `SMTP_USERNAME`, `SMTP_PASSWORD` / `_FILE` | | Send via SMTP |

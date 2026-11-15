@@ -30,7 +30,10 @@ type Config struct {
 	DataDir     string
 	SiteTitle   string
 	AdminEmails map[string]bool
-	Mail        MailConfig
+	// OpenSignup lets anyone with an inbox sign in; otherwise only admins and
+	// emails on the invite list (Admin → People) can.
+	OpenSignup bool
+	Mail       MailConfig
 	// New-item emails go out once nothing new has been posted for this long,
 	// so posting ten things in a row sends one email.
 	NewItemsDelay time.Duration
@@ -76,8 +79,13 @@ func loadConfig() Config {
 	if err != nil {
 		log.Fatalf("NEW_ITEMS_DELAY: %v", err)
 	}
+	openSignup, err := strconv.ParseBool(env("OPEN_SIGNUP", "false"))
+	if err != nil {
+		log.Fatalf("OPEN_SIGNUP: %v", err)
+	}
 	return Config{
 		NewItemsDelay: delay,
+		OpenSignup:    openSignup,
 		Addr:          env("ADDR", ":8080"),
 		BaseURL:       strings.TrimRight(env("BASE_URL", "http://localhost:8080"), "/"),
 		DataDir:       env("DATA_DIR", "./data"),
@@ -103,6 +111,9 @@ func main() {
 	}
 	if cfg.Mail.enabled() && cfg.Mail.From == "" {
 		log.Fatal("MAIL_FROM must be set when RESEND_API_KEY or SMTP_HOST is set")
+	}
+	if cfg.OpenSignup {
+		log.Print("OPEN_SIGNUP is on: anyone with an email address can sign in")
 	}
 	if !cfg.Mail.enabled() {
 		log.Print("no mail transport configured: emails (including login links) are printed to this log instead of sent")
