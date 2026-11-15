@@ -461,3 +461,50 @@ func TestMigrateAddsColumnsToOldDatabase(t *testing.T) {
 		t.Fatalf("migrated columns missing: %v", err)
 	}
 }
+
+// Review finding: saving an edit must not reopen an item someone claimed
+// between the edit's read and its write.
+func TestEditDoesNotReopenConcurrentClaim(t *testing.T) {
+	e := newTestEnv(t)
+	_, adminC := e.user(adminEmail, "Admin")
+	_, bobC := e.user("bob@example.com", "Bob")
+	for i := range 40 {
+		res := e.exec(`INSERT INTO items(title, mode, status, published_at, notified, created_at) VALUES('Lamp','fcfs','open',?,1,?)`,
+			time.Now().Unix(), time.Now().Unix())
+		id, _ := res.LastInsertId()
+		var wg sync.WaitGroup
+		wg.Add(2)
+		go func() {
+			defer wg.Done()
+			e.doMultipart(fmt.Sprintf("/admin/items/%d", id), adminC, map[string]string{"title": "Lamp (edited)", "mode": "fcfs"})
+		}()
+		go func() {
+			defer wg.Done()
+			e.do("POST", fmt.Sprintf("/items/%d/claim", id), bobC, nil)
+		}()
+		wg.Wait()
+		it := e.item(id)
+		if it.Status != "claimed" || it.WinnerID == 0 {
+			t.Fatalf("iteration %d: status=%s winner=%d, want the claim to survive the edit", i, it.Status, it.WinnerID)
+		}
+	}
+}
+
+// Review finding: comments on a hidden item are only emailed to admins.
+func TestHiddenItemCommentsOnlyEmailAdmins(t *testing.T) {
+	e := newTestEnv(t)
+	_, adminC := e.user(adminEmail, "Admin")
+	_, bobC := e.user("bob@example.com", "Bob")
+	e.exec(`INSERT INTO items(title, mode, status, published_at, notified, created_at) VALUES('Secret couch','fcfs','open',?,1,?)`,
+		time.Now().Unix(), time.Now().Unix())
+	e.do("POST", "/items/1/comments", bobC, url.Values{"body": {"Is it still available?"}})
+	e.doMultipart("/admin/items/1", adminC, map[string]string{"title": "Secret couch", "mode": "fcfs", "status": "hidden"})
+	e.do("POST", "/items/1/comments", adminC, url.Values{"body": {"Pulling this for now, sorry!"}})
+	e.drain()
+	if got := e.mailTo("bob@example.com"); len(got) != 0 {
+		t.Fatalf("bob can't see the hidden item but was emailed: %+v", got)
+	}
+	if got := e.mailTo(adminEmail); len(got) != 1 {
+		t.Fatalf("admin got %d emails, want 1 (bob's comment)", len(got))
+	}
+}

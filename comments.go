@@ -42,6 +42,8 @@ func (a *App) postComment(w http.ResponseWriter, r *http.Request) {
 
 // notifyComment emails the admins about comments from friends, and everyone
 // who already commented on the item (if they want reply emails) about new ones.
+// It follows the same visibility rule as the item page: while an item is
+// hidden, only admins are emailed.
 func (a *App) notifyComment(it *Item, author *User, body string) {
 	link := fmt.Sprintf("%s%s#comments", a.cfg.BaseURL, itemURL(it.ID))
 	subject := fmt.Sprintf("%s commented on %s", author.Display(), it.Title)
@@ -55,6 +57,10 @@ func (a *App) notifyComment(it *Item, author *User, body string) {
 				a.notify(email, subject, msg)
 			}
 		}
+	}
+	var status string
+	if err := a.db.QueryRow(`SELECT status FROM items WHERE id=?`, it.ID).Scan(&status); err != nil || status == "hidden" {
+		return
 	}
 	// Collect first: notify writes to the database, which has one connection.
 	rows, err := a.db.Query(`SELECT DISTINCT u.email FROM comments c JOIN users u ON u.id=c.user_id

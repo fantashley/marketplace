@@ -283,10 +283,18 @@ func (a *App) updateItem(w http.ResponseWriter, r *http.Request) {
 		http.Redirect(w, r, editURL, http.StatusSeeOther)
 		return
 	}
+	// Read and write in one transaction so a claim made in between can't be
+	// overwritten (the single DB connection serializes it against claims).
+	tx, err := a.db.Begin()
+	if err != nil {
+		a.serverError(w, err)
+		return
+	}
+	defer tx.Rollback()
 	var curEnds, curSecs int64
 	var curStatus string
 	var notified bool
-	if err := a.db.QueryRow(`SELECT COALESCE(lottery_ends_at,0), lottery_secs, status, notified FROM items WHERE id=?`, id).
+	if err := tx.QueryRow(`SELECT COALESCE(lottery_ends_at,0), lottery_secs, status, notified FROM items WHERE id=?`, id).
 		Scan(&curEnds, &curSecs, &curStatus, &notified); err != nil {
 		http.NotFound(w, r)
 		return
@@ -322,10 +330,16 @@ func (a *App) updateItem(w http.ResponseWriter, r *http.Request) {
 		// already announced before being hidden isn't announced twice.
 		publishedAt = sql.NullInt64{Int64: now.Unix(), Valid: true}
 	}
-	_, err = a.db.Exec(`UPDATE items SET title=?, description=?, mode=?, lottery_ends_at=?, lottery_secs=?, handoff=?, handoff_note=?, available_from=?,
-		status=?, published_at=CASE WHEN ? IS NOT NULL THEN ? ELSE published_at END
+	// The CASE is a second guard: an item that is claimed when the write lands
+	// stays claimed, whatever was read above.
+	_, err = tx.Exec(`UPDATE items SET title=?, description=?, mode=?, lottery_ends_at=?, lottery_secs=?, handoff=?, handoff_note=?, available_from=?,
+		status=CASE WHEN status='claimed' THEN 'claimed' ELSE ? END,
+		published_at=CASE WHEN ? IS NOT NULL THEN ? ELSE published_at END
 		WHERE id=?`, f.Title, f.Description, f.Mode, ends, secs, f.Handoff, f.HandoffNote, f.AvailableFrom,
 		status, publishedAt, publishedAt, id)
+	if err == nil {
+		err = tx.Commit()
+	}
 	if err != nil {
 		a.serverError(w, err)
 		return
